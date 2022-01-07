@@ -95,9 +95,8 @@ func base64decode(v string) string {
 	return string(data)
 }
 
-// protect encrypts the input value using AES-CBC. If a salt is set on t.config.Salt, it will prefix the plaintext
-// value before it is encrypted. The returned value is in the format of `$ocm_encrypted:<base64 of encrypted string>`.
-// An error is returned if the AES key is invalid.
+// protect encrypts the input value using AES-CBC. The returned value is in the format of
+// `$ocm_encrypted:<base64 of encrypted string>`. An error is returned if the AES key is invalid.
 func (t *TemplateResolver) protect(value string) (string, error) {
 	if value == "" {
 		return value, nil
@@ -108,17 +107,16 @@ func (t *TemplateResolver) protect(value string) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrInvalidAESKey, err)
 	}
 
-	blockSize := block.BlockSize()
-	// The initialization vector is meant to be something unpredictable but known to both parties. It is mixed in with
-	// the first block that is encrypted. Subsequent blocks mix with the cipher text from the previous block instead of
-	// the initialization vector. Ideally this would be unique per message so that the same message encrypted with the
-	// same key would appear different but that is impractical in this situation. This is mostly mitigated with a salt
-	// added to the plaintext value.
-	iv := t.config.AESKey[:blockSize]
-	blockMode := cipher.NewCBCEncrypter(block, iv)
+	// This is already validated in the NewResolver method, but is checked again in case that method was bypassed
+	// to avoid a panic.
+	if len(t.config.InitializationVector) != IVSize {
+		return "", ErrInvalidIV
+	}
 
-	// Prefix the salt to the plaintext value and pad it so that it matches the block size before encrypting it.
-	valueBytes := []byte(t.config.Salt + value)
+	blockSize := block.BlockSize()
+	blockMode := cipher.NewCBCEncrypter(block, t.config.InitializationVector)
+
+	valueBytes := []byte(value)
 	valueBytes = pkcs7Pad(valueBytes, blockSize)
 
 	encryptedValue := make([]byte, len(valueBytes))
